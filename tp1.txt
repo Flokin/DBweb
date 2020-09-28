@@ -1,0 +1,58 @@
+create or replace function hello ()
+	returns void
+	as $$
+	begin
+		raise notice 'Hello World';
+	end;  
+	$$ language plpgsql;
+
+
+create or replace function display_int(tmp integer)
+	returns integer
+	as $$
+	begin
+		return tmp;
+	end;
+	$$ language plpgsql;
+
+create or replace function my_upper(tmp text)
+	returns booleen
+	as $$
+	begin
+		return UPPER(tmp);
+	end;
+	$$ language plpgsql;
+
+
+create or replace function maj(tmp text)
+	returns void
+	as $$
+	begin
+		UPDATE emp set sal = sal*1.1 WHERE ename = my_upper(tmp);
+	end;
+	$$ language plpgsql;
+
+
+create or replace function display_info(ann1 numeric, ann2 numeric)
+	returns void
+	as $$
+	declare
+		tmp record;
+	begin
+		FOR tmp IN
+			select * from emp where hiredate BETWEEN to_date(to_char(ann1,'9999'),'YYYY') and to_date(to_char(ann2,'9999'),'YYYY')
+			LOOP
+			raise notice 'nom : %', tmp.ename;
+		end LOOP;
+	end;
+	$$ language plpgsql;
+
+create or replace function maj_ville()
+	returns void
+	as $$
+	begin
+		UPDATE emp set sal = sal*1.1 
+		FROM dept
+		WHERE dept.loc = 'DALLAS' or dept.loc = 'NEW YORK';
+	end;
+	$$ language plpgsql;

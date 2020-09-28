@@ -1,0 +1,88 @@
+*********************************************************************************
+**************************** EXO 1 **********************************************
+
+create TRIGGER hist_s after insert or update on emp for each row execute procedure hist_trans();
+
+create or replace function hist_trans() returns trigger as $$
+
+	Declare
+	c_date hist_sal.transdate%type;
+	c_hour hist_sal.transhour%type;
+
+	c_budget dept.budget%type;
+
+	Begin 
+		c_date = current_date;
+		c_hour = current_time;
+		if(TG_OP = 'UPDATE') then
+		insert into hist_sal values 
+			(New.empno, c_date, c_hour,Old.sal, New.sal);
+			select sum(sal) from emp where deptno = Old.deptno into c_budget;
+			UPDATE dept set budget = c_budget where deptno = Old.deptno ;
+		elseif(TG_OP = 'INSERT') then
+		insert into hist_sal values 
+			(New.empno, c_date, c_hour,0, New.sal);
+			select sum(sal) from emp where deptno = New.deptno into c_budget;
+			UPDATE dept set budget = c_budget where deptno = New.deptno ;
+		end if;
+
+			return New;
+	end;
+	$$ language 'plpgsql';
+
+
+
+*********************************************************************************
+**************************** EXO 2 **********************************************
+
+create TRIGGER plaf before insert or update on emp for each row execute procedure plaf_max();
+
+create or replace function plaf_max() returns trigger as $$
+	declare
+		sal_king emp.sal%type;
+	begin 
+		select sal from emp where ename like 'KING' into sal_king;
+
+	if(New.sal >= sal_king) then raise exception SQLSTATE 'M0001';
+	end if;
+	return New;
+
+	exception 
+		when SQLSTATE 'M0001' then New.sal = sal_king - 1;
+
+	return New;
+
+	end;
+$$ language 'plpgsql';
+
+
+
+*********************************************************************************
+**************************** EXO 3 **********************************************
+
+create TRIGGER supp_tranche before delete on salgrade for each row execute procedure maj_sal();
+
+create or replace function maj_sal() returns trigger as $$
+	declare
+		tmp record;
+		t_losal salgrade.losal%type;
+		t_grade salgrade.grade%type;
+	begin 
+		select grade from salgrade where grade = Old.grade +1 into t_grade;
+		if(t_grade is NULL) then raise exception SQLSTATE 'M0001';
+		return NULL;
+		else
+			select losal from salgrade where grade = Old.grade+1 into t_losal;
+			for tmp in select * from emp where sal between Old.losal and Old.hisal loop
+				update emp set sal = t_losal where empno = tmp.empno;
+			end loop;
+		end if;
+		return New;
+
+	exception 
+		when SQLSTATE 'M0001' then raise exception 'Impossible de supprimer cette tranche de salaire';
+
+	return NULL;
+
+	end;
+$$ language 'plpgsql';

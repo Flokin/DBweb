@@ -1,0 +1,118 @@
+*********************************************************************************
+**************************** EXO 1 **********************************************
+create or replace function exec(tmp text)
+	returns boolean 
+	as $$
+	begin 
+
+	execute(tmp);
+	return true;
+		exception
+			when undefined_table then raise exception 'Table inexistante';
+			when undefined_column then raise exception 'Colonne inexistante';
+			when integrity_constraint_violation then raise exception 'Non respect de contrainte FK';
+			when syntax_error then raise exception 'Erreur de syntaxe';
+			when SQLSTATE 'M0001' or SQLSTATE 'M0002' then
+				 raise notice '*** erreur % ***: %', SQLSTATE, SQLERRM;
+			 when raise_exception then
+				 raise notice '*** erreur sans code ***: %',SQLERRM;
+			 when others then
+				 raise notice '*** erreur others ***: %-%',SQLSTATE, SQLERRM;
+		return false;
+	end;
+	$$ language plpgsql;
+
+*********************************************************************************
+**************************** EXO 2 **********************************************
+
+create or replace function add_tranche(losal salgrade.losal%type, hisal salgrade.hisal%type, grade salgrade.grade%type)
+	returns void
+	as $$
+	declare 
+	max_hisal salgrade.hisal%type;
+	max_grade salgrade.grade%type;
+	begin
+		select max(salgrade.hisal) from salgrade into max_hisal;
+		select max(salgrade.grade) from salgrade into max_grade;
+		if(losal > hisal) then raise SQLSTATE 'M0001';
+		elseif(losal < max_hisal) then raise exception SQLSTATE 'M0002';
+		elseif(grade < max_grade) then raise exception SQLSTATE 'M0003';
+		end if;
+	
+	insert into salgrade values
+	(grade, losal, hisal);	
+
+	exception
+		when SQLSTATE 'M0001' then raise exception 'Low salaire INPUT > High salaire INPUT';
+		when SQLSTATE 'M0002' then raise exception 'Low salaire INPUT < High salaire max de la table';
+		when SQLSTATE 'M0003' then raise exception 'Grade INPUT < Grade de la table';
+	end;
+	$$ language plpgsql;
+
+*********************************************************************************
+**************************** EXO 3 **********************************************
+
+create TRIGGER verif_salgrade	BEFORE INSERT ON salgrade FOR EACH ROW EXECUTE PROCEDURE add_tranche();
+
+create or replace function add_tranche() returns trigger as $$
+	declare 
+	max_hisal salgrade.hisal%type;
+	max_grade salgrade.grade%type;
+	begin
+		select max(salgrade.hisal) from salgrade into max_hisal;
+		select max(salgrade.grade) from salgrade into max_grade;
+		if(New.losal > New.hisal) then raise exception SQLSTATE 'M0001';
+		elseif(New.losal < max_hisal) then raise exception SQLSTATE 'M0002';
+		elseif(New.grade <= max_grade) then raise exception SQLSTATE 'M0003';
+		end if;
+	return NEW;
+
+	exception
+		when SQLSTATE 'M0001' then raise exception 'Low salaire INPUT > High salaire INPUT';
+		when SQLSTATE 'M0002' then raise exception 'Low salaire INPUT < High salaire max de la table';
+		when SQLSTATE 'M0003' then raise exception 'Grade INPUT < Grade de la table';
+	return NULL;
+	end;
+	$$ language plpgsql;
+
+*********************************************************************************
+**************************** EXO 4 **********************************************
+
+create TRIGGER emp_insert before insert on emp for each row execute procedure add_emp();
+
+create or replace function add_emp() returns trigger as $$
+	Declare
+	existe_emp emp.empno%type;
+	existe_mgr emp.mgr%type;
+	c_date date;
+
+	Begin 
+		select empno from emp where empno = New.empno into existe_emp;
+		select mgr from emp where mgr = New.mgr into existe_mgr;
+		select current_date into c_date;
+
+		if(New.empno is NULL) then raise exception SQLSTATE 'M0001';
+		elseif(existe_emp is not NULL) then raise exception SQLSTATE 'M0002';
+		elseif(New.ename is NULL) then raise exception SQLSTATE 'M0003';
+		elseif(New.mgr is NULL and existe_mgr is not NULL) then raise exception SQLSTATE 'M0004';
+		elseif(New.sal is NULL) then raise exception SQLSTATE 'M0005';
+		elseif(New.sal < 0) then raise exception SQLSTATE 'M0006';
+		end if;
+
+		New.ename := UPPER(New.ename);
+
+		if(New.hiredate is NULL) then New.hiredate := c_date;
+		end if;
+
+		return New;
+
+	exception
+		when SQLSTATE 'M0001' then raise exception 'empno non specifier';
+		when SQLSTATE 'M0002' then raise exception 'empno existe deja';
+		when SQLSTATE 'M0003' then raise exception 'ename non specifier';
+		when SQLSTATE 'M0004' then raise exception 'mgr n existe pas';
+		when SQLSTATE 'M0005' then raise exception 'sal non specifier';
+		when SQLSTATE 'M0006' then raise exception 'sal doit etre strictement positif';
+	return NULL;
+	end;
+	$$ language 'plpgsql';
